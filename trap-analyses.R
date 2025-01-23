@@ -40,7 +40,6 @@ library(ggplot2)
 library(sf)
 library(maps)
 
-
 ## Read the CSV file (ensure correct encoding)
 sites_raw <- read.csv("./data/raw/site-info.csv", stringsAsFactors = FALSE, fileEncoding = "latin1")
 
@@ -50,7 +49,6 @@ sites_raw <- sites_raw %>%
     lat = tryCatch(gsub("\xb0", "°", lat, fixed = TRUE), error = function(e) lat),
     long = tryCatch(gsub("\xb0", "°", long, fixed = TRUE), error = function(e) long)
   )
-
 
 ## Clean and split latitude and longitude into degrees and minutes
 sites <- sites_raw %>%
