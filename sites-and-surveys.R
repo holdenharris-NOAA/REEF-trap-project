@@ -11,13 +11,13 @@
 rm(list=ls()); gc(); windows()
 library(dplyr)
 library(ggplot2)
+library(cowplot)
+library(sf)
+library(maps)
+
 
 ## -----------------------------------------------------------------------------
 ## Sites
-
-library(ggplot2)
-library(sf)
-library(maps)
 
 ## Read the CSV file (ensure correct encoding)
 sites_raw <- read.csv("./data/raw/site-info.csv", stringsAsFactors = FALSE, fileEncoding = "latin1")
@@ -92,20 +92,15 @@ summ_diver_surveys <- diver_surveys %>%
     SD_Depth = sd(depth_m),
     Min_Depth = min(depth_m),
     Max_Depth = max(depth_m)
-  ); summ_diver_surveys
-
-# Print the updated summary
-print(summ_diver_surveys)
+  ); print(summ_diver_surveys)
 
 
-## Create the scatter plot for 1-to-1 comparison
+## Look at scatter plot for 1-to-1 comparison
 plot(  diver_surveys$relief_m, diver_surveys$lf_count,  # x and y variables
   pch = 16, col = rgb(0, 0, 1, 0.7),  # Semi-transparent blue points
   xlab = "Reef Relief (m)", ylab = "Lionfish Count",
   cex = 1.2, bty = 'n'
-)
-abline(lm(diver_surveys$lf_count ~ diver_surveys$relief_m), col = "red", lty = 2) ## Add a one-to-one trend line (linear fit)
-
+); abline(lm(diver_surveys$lf_count ~ diver_surveys$relief_m), col = "red", lty = 2) ## Add a one-to-one trend line (linear fit)
 
 ## Examine linear relationshiope between lionfish count and reef releife
 lf_relief_lm <- lm(diver_surveys$lf_count ~ diver_surveys$relief_m)
@@ -115,24 +110,23 @@ summary(lf_relief_lm)
 correlation_test <- cor.test(diver_surveys$lf_count, diver_surveys$relief_m, method = "spearman")
 print(correlation_test)
 
-
 ## Examine relationship between lionfish count and habitat type ----------------
 diver_surveys_clean <- diver_surveys %>%
   filter(!is.na(lf_count)) %>% ## Remove rows with missing values in `lf_count`
-  mutate(hab_type = as.factor(hab_type)) # Ensure `hab_type` is a factor
-
-## Examine ANOVA assumptions
-qqnorm(residuals(anova_hab_type)); qqline(residuals(anova_hab_type)) ## Normality of residuals
-shapiro.test(residuals(anova_hab_type)) ## Shapiro-Wilk test for normality
-bartlett.test(lf_count ~ hab_type, data = diver_surveys_clean)  # Bartlett's test
+  mutate(hab_class = as.factor(hab_class)) 
 
 ## Conduct ANOVA
-anova_hab_type <- aov(lf_count ~ hab_type, data = diver_surveys_clean)
-summary(anova_hab_type)
-TukeyHSD(anova_hab_type)
+anova_hab_class <- aov(lf_count ~ hab_class, data = diver_surveys_clean)
+summary(anova_hab_class)
+TukeyHSD(anova_hab_class)
+
+## Examine ANOVA assumptions
+qqnorm(residuals(anova_hab_class)); qqline(residuals(anova_hab_class)) ## Normality of residuals
+shapiro.test(residuals(anova_hab_class)) ## Shapiro-Wilk test for normality
+bartlett.test(lf_count ~ hab_class, data = diver_surveys_clean)  # Bartlett's test
 
 ## Conduct Kruskal Wallis test
-kruskal.test(lf_count ~ hab_type, data = diver_surveys_clean)
+kruskal.test(lf_count ~ hab_class, data = diver_surveys_clean)
 
 ## Make 4 plots for diver surveys ----------------------------------------------
 ## Set standard plot theme for standardization
@@ -143,24 +137,34 @@ standard_theme <- theme_minimal(base_size = 12) +  # Base font size for the plot
     axis.line = element_line(color = "black", size = 0.8),      # Standardize axis line color and thickness
     panel.grid.major = element_line(color = "gray80"),          # Light gray major grid lines
     panel.grid.minor = element_line(color = "gray90"),          # Light gray minor grid lines
+    panel.grid.major.x = element_blank(),                       # Remove major vertical grid lines
+    panel.grid.minor.x = element_blank(),                       # Remove minor vertical grid lines
     panel.border = element_blank()                              # Remove panel borders
   )
+
+## Find the maximum frequency across both histograms
+max_lf  <- max(diver_surveys$lf_count, na.rm = T) 
+max_rel <- max(diver_surveys$relief_m, na.rm = T) 
 
 ## Define the first histogram (Lionfish Count)
 hist_lf <- ggplot(diver_surveys, aes(x = lf_count)) +
   geom_histogram(binwidth = 1, fill = "blue", color = "black", alpha = 0.7) +
   labs(x = "Lionfish Count", y = "Frequency") +
   standard_theme +
-  ylim(0, max_y) +
-  scale_y_continuous(breaks = seq(0, max_y, by = 2))  # Y-axis breaks every 2
+  ylim(0, max_lf) +
+  scale_y_continuous(breaks = seq(0, max_lf, by = 2), expand = c(0, 0)) +
+  scale_x_continuous(breaks = seq(0, max_lf, by = 3),expand = c(0,0))
+hist_lf
 
 ## Define the second histogram (Reef Relief)
 hist_rel <- ggplot(diver_surveys, aes(x = relief_m)) +
   geom_histogram(binwidth = 0.2, fill = "green", color = "black", alpha = 0.7) +
   labs(x = "Max reef relief (m)", y = "Frequency") +
   standard_theme +
-  ylim(0, max_y) +
-  scale_y_continuous(breaks = seq(0, max_y, by = 2))  # Y-axis breaks every 2
+  ylim(0, max_rel) +
+  scale_y_continuous(breaks = seq(0, 10, by = 1), expand = c(0, 0)) +
+  scale_x_continuous(breaks = seq(0, 3, by = 0.5),expand = c(0,0))
+hist_rel
 
 ## Scatter plot with a one-to-one trend line
 scatter_plot <- ggplot(diver_surveys, aes(x = relief_m, y = lf_count)) +
@@ -172,16 +176,16 @@ scatter_plot <- ggplot(diver_surveys, aes(x = relief_m, y = lf_count)) +
   theme_minimal(); scatter_plot
 
 ## Make bar plot
-## Calculate mean and standard deviation of `lf_count` by `hab_type`
+## Calculate mean and standard deviation of `lf_count` by `hab_class`
 habitat_summary <- diver_surveys_clean %>%
-  group_by(hab_type) %>%
+  group_by(hab_class) %>%
   summarise(
     mean_lf_count = mean(lf_count),
     sd_lf_count = sd(lf_count),
     n = n()
   )
 
-hab_type <- ggplot(habitat_summary, aes(x = hab_type, y = mean_lf_count)) +
+hab_class <- ggplot(habitat_summary, aes(x = hab_class, y = mean_lf_count)) +
   geom_bar(stat = "identity", fill = "skyblue", color = "black") +
   geom_errorbar(
     aes(
@@ -192,26 +196,32 @@ hab_type <- ggplot(habitat_summary, aes(x = hab_type, y = mean_lf_count)) +
   ) +
   labs(y = "Mean lionfish count", x = "") +
   standard_theme +
-  theme(axis.text.x = element_text(size = 10, angle = -20, hjust = 0.5))  # Rotate x-axis labels
+  theme(
+    axis.text.x = element_text(size = 12, hjust = 0.5),
+    panel.grid.major.x = element_blank(),  # Remove major vertical grid lines
+    panel.grid.minor.x = element_blank()   # Remove minor vertical grid lines
+  ) +
+  scale_x_discrete(expand = c(0, 0)) + 
+  scale_y_continuous(breaks = seq(0, 12, by = 3), expand = c(0, 0))
+hab_class
 
-## Combine the plots using cowplot
+
+## Combine the plots
 plots_diver_surveys <- plot_grid(
-  hist_rel, hist_lf, scatter_plot, hab_type,
-  labels = c("(A)", "(B)", "(C)", "(D)"), # Panel labels
-  label_size = 12,          # Size of panel labels
+  hist_rel, hist_lf, scatter_plot, hab_class,
+  labels = c("A", "B", "C", "D"), # Panel labels
+  label_size = 14,          # Size of panel labels
   align = "v",              # Align vertically
   label_x = 0.85,            # Horizontal position of labels (inset)
-  label_y = 0.9,           # Vertical position of labels (inset)
+  label_y = 0.95,           # Vertical position of labels (inset)
   ncol = 2                  # Two panels side-by-side
 ); print(plots_diver_surveys)
 
-## Save the plot as a PNG image
+## Write out plot as a PNG image
 ggsave(
-  "./figures/plot_diver_surveys.png",
-  plot = plots_diver_surveys,
-  width = 6.5, height = 6.5,  # Dimensions in inches
-  units = "in",
-  dpi = 2000                 # High resolution for publication
+  "./figures/plot_diver_surveys.png", plots_diver_surveys,
+  width = 6.5, height = 6.5,  
+  units = "in", dpi = 2000               
 )
 
 
@@ -302,3 +312,11 @@ plot_sites <- ggplot() +
   theme_minimal() +
   annotation_scale(location = "br") + ## Add a scale bar
   annotation_north_arrow(location = "br", style = north_arrow_fancy_orienteering()) ## Add a north arrow
+print(plot_sites)
+
+## Write out plot as a PNG image
+ggsave(
+  "./figures/plot_sites_with_lf-count_and_relief.png", plot_sites,
+  width = 7.5, height = 5,  
+  units = "in", dpi = 1500               
+)
