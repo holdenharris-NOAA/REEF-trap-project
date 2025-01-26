@@ -100,3 +100,139 @@ plot_catches <- ggplot(plot_data_totals,
 # Combine the two plots side by side
 comb_bar_plots <- plot_retrievals + plot_catches; comb_bar_plots
 
+
+################################################################################
+##
+## Analyses --------------------------------------------------------------------
+
+library(lme4)
+library(glmmTMB)
+library(MASS)
+
+## FUNCTIONS TO WRITE OUT ANALYSES
+sig_stars <- function(P){
+  stars = P
+  stars[P>0.1] = "" 
+  stars[P<=0.1] = "." 
+  stars[P<=0.05] = "*" 
+  stars[P<=0.01] = "**" 
+  stars[P<=0.001] = "***" 
+  return(stars)
+}
+
+## FUNCTION TO OUTPUT PARAMETERS AND SIGNIFICANCE FROM LOG-TRANSFORMED GLM
+coeftab_glm <- function(mod, response = "", model = "", dec_places = 3){
+  #mod = lf_nb
+  coefs = as.data.frame(coef(summary(mod)))
+  out = data.frame(Effects = rownames(coefs))
+  out$Est = round(exp(coefs$Estimate), dec_places)
+  out$Est[1] = round(coefs$Estimate[1], dec_places)
+  upCI  = round(exp(coefs$Estimate + 1.96 * coefs$`Std. Error`), dec_places)
+  lowCI = round(exp(coefs$Estimate - 1.96 * coefs$`Std. Error`), dec_places)
+  upCI[1]  = round(coefs$Estimate[1] + 1.96 * coefs$`Std. Error`[1], dec_places)
+  lowCI[1] = round(coefs$Estimate[1] - 1.96 * coefs$`Std. Error`[1], dec_places)
+  out$'95% CI' = paste(sprintf("%.3f", lowCI), "-", sprintf("%.3f", upCI), sep = "")
+  out$test_stat = round(coefs[3], dec_places)
+  out$P = coefs[4]
+  names(out$test_stat)=names(coefs[3])
+  P = coefs[,4]
+  P = sprintf("%.3f", P)
+  P[P<0.001] = "<0.001" 
+  out$P = P
+  out$Sig = sig_stars(P)
+  out$Estimate = NULL; out$`Std. Error`=NULL
+  if (response != "") out$Response = response
+  if (model    != "") out$Model    = model
+  return(out)
+}
+
+
+## Prepare data ----------------------------------------------------------------
+##
+## Subset retrievals datasheet
+ret <- retrievals[, c("site_name", "site_ID", "dep_date", "ret_date", "site_rel",
+                      "trap_type", "lf_num_surv", "lf_catch_num", "bycatch_num",
+                      "pot_light", "bycatch_desc", "bycatch_size"
+                      )]
+
+## Add binary response column for whether catch of lionfish or bycatch occurred
+ret <- ret %>%
+  mutate(
+    ret_with_lfcount = ifelse(lf_catch_num > 0, 1, 0),  # 1 if lionfish caught, else 0
+    ret_with_nontarg = ifelse(bycatch_num > 0, 1, 0)    # 1 if bycatch caught, else 0
+  )
+
+## Make sure dataframe has correct data types
+ret$site_ID          <- as.factor(ret$site_ID)
+ret$trap_type        <- as.factor(ret$trap_type)
+ret$pot_light        <- as.factor(ret$pot_light)
+str(ret)
+
+## Non-target catches ----------------------------------------------------------
+
+## Notes: Both trap types were deployed at each site, 
+## thus site_ID as a random effect to account for the paired nature of the data.
+
+
+## Binomial regression analysis ------------------------------------------------
+## Mixed effects model with site_ID
+bin_glmm_nt <- glmer(ret_with_nontarg ~  trap_type + pot_light + lf_num_surv + site_rel ## Fixed effects - systematic variation
+                    + (1 | site_ID), ## Random effect - site-specific variability
+                    family = binomial(link = "logit"), 
+                    data = ret)
+summary(bin_glmm_nt)
+## Notes --> model fitting indicates boundary (singular) fit: see help('isSingular')
+## indicates that the random effects ((1 | site_ID)) are estimated as zero or near-zero variance. 
+## This means that the model treats the random intercept for site_ID as unnecessary 
+## because it doesn't explain additional variability in the response (ret_with_nontarg).
+
+## Simplify model by removing the random effect and refitting
+bin_glm_nt <- glm(ret_with_nontarg ~ trap_type + pot_light + lf_num_surv + site_rel, 
+                  family = binomial(link = "logit"), 
+                  data = ret)
+summary(bin_glm_nt)
+coeftab_glm(bin_glm_lf)
+
+## --> Fixed effects estimates are the same as the mixed-effects model
+## Estimate: -2.88155, p = 0.0105 (significant).
+## Interpretation: The log-odds of a non-target catch when all predictors are at their reference levels 
+## (GT traps, no lights, lf_num_surv = 0, site_rel = 0) is -2.88.
+## Odds: exp(-2.88155) ≈ 0.056. This means the baseline probability of a non-target catch is very low (5.6%).
+
+## trap_type (MLT vs GT):
+## Estimate: 2.49317, p = 0.0223 (significant).
+## Interpretation: MLT traps have significantly higher odds of a non-target catch compared to GT traps.
+## Odds ratio: exp(2.49317) ≈ 12.1. MLT traps are approximately 12.1 times more likely to result in a non-target catch than GT traps.
+
+## pot_light (Yes vs No; whether there was a pot light on the trap):
+## Estimate: -0.29445, p = 0.6931 (not significant).
+## Interpretation: The presence of lights does not significantly affect the odds of a non-target catch.
+
+## lf_num_surv (Number of lionfish observed in the site survey):
+## Estimate: 0.03394, p = 0.6572 (not significant).
+## Interpretation: The number of lionfish observed does not significantly affect the odds of a non-target catch.
+
+## site_rel (Relief at the site):
+## Estimate: -1.29045, p = 0.0965 (marginally significant, p < 0.1).
+## Interpretation: Sites with higher relief may have lower odds of non-target catches.
+## Odds ratio: exp(-1.29045) ≈ 0.28. Higher relief is associated with approximately 72% lower odds of a non-target catch, 
+## but the result is not significant at the 0.05 level.
+
+## Negative binomial regression analysis ------------------------------------------------
+## Mixed effects model with site_ID
+negbin_glmm_nt <- glmmTMB(
+  ret_with_nontarg ~  trap_type + pot_light + lf_num_surv + site_rel + (1 | site_ID),
+  family = nbinom2, data = ret) # Negative binomial distribution (variance = mean * dispersion)
+summary(negbin_glmm_nt)
+
+## --> Warning message:In finalizeTMB(TMBStruc, obj, fit, h, data.tmb.old) :Model convergence problem; non-positive-definite Hessian matrix. See vignette('troubleshooting')
+## Model did not converge properly. Typically means that the optimization process encountered numerical issues, 
+## possibly due to overfitting, multicollinearity, lack of variability in the data, or an overly complex random effects structure.
+## --> Again, including random effect isn't possible. 
+
+## Negative binomial GLM
+negbin_glm_nt <- glm.nb(bycatch_num ~ trap_type + pot_light + lf_num_surv + site_rel, 
+                        data = ret)
+summary(negbin_glm_nt)
+coeftab_glm(negbin_glm_nt)
+
