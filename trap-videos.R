@@ -1,4 +1,6 @@
 library(dplyr)
+library(ggplot2)
+
 
 vids <- read.csv("./data/raw/video-reads.csv", stringsAsFactors = FALSE); str(vids)
 vids <- vids %>% filter(!is.na(lf_count))
@@ -12,6 +14,31 @@ nrow(vids)
 ## Trap details: Columns like trap_type, trap_num, and site_name.
 ## Video metadata: Columns like date_vid, length_vid_s, and file_name_vid.
 ## Time of day: Column tod categorizes day or night
+
+
+## Convert date columns from character to Date format
+vids <- vids %>%
+  mutate(
+    date_dep = as.Date(date_dep, format = "%m/%d/%Y"),
+    date_ret = as.Date(date_ret, format = "%m/%d/%Y"),
+    date_vid = as.Date(date_vid, format = "%m/%d/%Y"),
+    corrected_vid_date = as.Date(corrected_vid_date, format = "%m/%d/%Y")
+  )
+
+## Only "corrected_vid_date" is given for corrections; these need to be aggregated into a single column
+## aggregate "corrected_vid_date" and "date_vid" into a single column
+vids <- vids %>%
+  mutate(
+    corrected_vid_date = if_else(
+      !is.na(corrected_vid_date),
+      as.Date(corrected_vid_date, format = "%m/%d/%Y"),
+      as.Date(date_vid, format = "%m/%d/%Y")
+    )
+  )
+
+## Now calculate days deployed
+vids <- vids %>%
+  mutate(days_deployed = as.numeric(corrected_vid_date - date_dep))
 
 ## Look at number of sites
 n_distinct(vids$site_name)
@@ -54,16 +81,58 @@ lf_freq <- vids %>%
 ## 38 videos had 1 lionfish, 1 video had 2 lionfish in them
 
 ## Look at videos with lionfish present --------------------------------
-lf_present <- vids %>% filter(lf_count > 0)
-
-lf_present %>% 
-  summarize(
-    unique_deployments = n_distinct(paste(trap_num, date_dep)),
-    unique_sites = n_distinct(site_name)
-  )
-
-lf_present %>% 
-  group_by(deployment, trap_type, site_name) %>%
+lf_present <- vids %>% 
+  filter(lf_count > 0) %>% 
+  group_by(site_name, trap_type, tod) %>%
   summarize(
     count = n()) %>%
-  arrange(desc(count))
+  arrange(desc(count)); lf_present
+
+## Look at summary of lionfish counts by days deployed
+days_deployed_summary <- 
+  vids %>% 
+  filter(lf_count > 0) %>% 
+  group_by(deployment, days_deployed) %>%
+  summarize(
+    count = n()) %>%
+  arrange(desc(deployment)); days_deployed_summary
+
+## Make plot
+hist(days_deployed_summary$days_deployed)
+
+## Bar plot of counts by days_deployed
+library(ggplot2)
+library(scales)
+
+## Plot of counts by days_deployed
+plot_days_deployed <- 
+  ggplot(days_deployed_summary, aes(x = factor(days_deployed), y = count, fill = deployment)) +
+    geom_bar(stat = "identity", position = "dodge", color = "black") +
+    theme_minimal() +
+    labs(
+      x = "Time deployed (# days)",
+      y = "Video samples (#)",
+      fill = "Deployment:\ntrap type and site"
+    ) +
+    theme(
+      axis.text = element_text(color = "black"),  # Black axis text
+      axis.title = element_text(color = "black"),  # Black axis labels
+      axis.line = element_line(color = "black"),  # Dark axis lines
+      panel.grid.major.y = element_line(color = "lightgray", size = 0.5),  # Light gray horizontal grid lines
+      panel.grid.minor = element_blank(),  # Remove minor grid lines
+      panel.grid.major.x = element_blank()  # Remove vertical grid lines
+    ) +
+    scale_y_continuous(
+      breaks = seq(0, max(days_deployed_summary$count, na.rm = TRUE), by = 1),  # Y-axis breaks at every 1 unit
+      expand = c(0, 0)  # Removes space between axis and data
+    ) +
+    scale_x_discrete(
+      expand = c(0, 0)  # Removes space between axis and data
+    ); plot_days_deployed
+
+## Write out plot as a PNG image
+ggsave(
+  "./figures/plot_days_deployed.png", plot_days_deployed,
+  width = 6.5, height = 3,  
+  units = "in", dpi = 3000               
+)
