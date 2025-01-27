@@ -1,7 +1,6 @@
 library(dplyr)
 library(ggplot2)
 
-
 vids <- read.csv("./data/raw/video-reads.csv", stringsAsFactors = FALSE); str(vids)
 vids <- vids %>% filter(!is.na(lf_count))
 nrow(vids)
@@ -14,7 +13,6 @@ nrow(vids)
 ## Trap details: Columns like trap_type, trap_num, and site_name.
 ## Video metadata: Columns like date_vid, length_vid_s, and file_name_vid.
 ## Time of day: Column tod categorizes day or night
-
 
 ## Convert date columns from character to Date format
 vids <- vids %>%
@@ -36,9 +34,16 @@ vids <- vids %>%
     )
   )
 
-## Now calculate days deployed
-vids <- vids %>%
-  mutate(days_deployed = as.numeric(corrected_vid_date - date_dep))
+## Calculate days deployed
+vids <- vids %>% mutate(days_deployed = as.numeric(corrected_vid_date - date_dep))
+
+## Make binary column for lionfish present or not
+vids <- vids %>% mutate(lf_present = ifelse(lf_count > 0, 1, 0))  # 1 if lionfish observed, else 0
+
+
+################################################################################
+## 
+## Summary statisticds
 
 ## Look at number of sites
 n_distinct(vids$site_name)
@@ -136,3 +141,31 @@ ggsave(
   width = 6.5, height = 3,  
   units = "in", dpi = 3000               
 )
+
+################################################################################
+##
+## Analysis
+
+## Mixed effects model with site_ID
+
+bin_glmm_lfvid <- 
+  glmer(lf_present ~ trap_type + as.factor(days_deployed)
+                     + (1 | deployment), ## Random effect -> Incoporate same camera on deployment
+                     family = binomial(link = "logit"), data = vids)
+summary(bin_glmm_lfvid)
+coeftab_glm(bin_glmm_lfvid)
+write.csv(coeftab_glm(bin_glmm_lfvid), "./tables/glmm-vid-lfpresence.csv", row.names = FALSE) ## Write out results table
+
+## GLMM random effect. The large variance (16.29) indicates considerable variability across 
+## deployments in lionfish presence, suggesting the importance of including deployment as a random effect.
+##
+## Intercept: logit of -10.14 corresponds to an extremely low probability of lionfish presence 
+## under the baseline conditions (trap_type = GT and days_deployed = 0).
+##
+## Trap type. coefficient for trap_typeMLT is positive (1.08), suggesting lionfish may be more likely 
+## to be observed near MLT traps than GT traps, but this effect is not statistically significant (p = 0.3814).
+##
+## Days deployed. 
+## Day 1 - No significant difference in lionfish presence compared to baseline (p = 0.9831).
+## Day 2 - Statistically significant increase in the probability of lionfish presence compared to baseline (p = 0.0347). The logit of 1.09 translates to an increased odds ratio (OR ≈ 2.97).
+## Day 3 - No significant difference compared to baseline (p = 0.7404).

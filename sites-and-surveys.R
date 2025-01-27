@@ -5,9 +5,6 @@
 ## REEF Lionfish Trap Project
 ##
 ## sites-and-surveys.R
-##
-## ---------------------------------------------------------------------
-########################################################################
 
 ## Working libraries
 rm(list=ls()); gc(); windows()
@@ -320,5 +317,5 @@ print(plot_sites)
 ggsave(
   "./figures/plot_sites_with_lf-count_and_relief.png", plot_sites,
   width = 7.5, height = 5,  
-  units = "in", dpi = 1500               
+  units = "in", dpi = 3000               
 )
