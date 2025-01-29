@@ -5,17 +5,13 @@
 ## REEF Lionfish Trap Project
 ##
 ## trap-retrievals-and-catches.R
-##
-## ---------------------------------------------------------------------
-########################################################################
 
-
-## -----------------------------------------------------------------------------
-## Trap retrieval analyses
-
+rm(list=ls()); gc(); windows()
+source("./functions.R")
 library(ggplot2)
 library(dplyr)
 library(tidyr)
+library(cowplot)
 
 ## Load data
 retrievals <- read.csv("./data/raw/trap-deployment-retrievals.csv")
@@ -38,21 +34,21 @@ summ_catches <- retrievals %>%
 
 ## Reshape data for plotting
 plot_data_retrievals <- summ_catches %>%
-  select(trap_type, ret_with_lfcount, ret_with_bycatch) %>%
+  dplyr::select(trap_type, ret_with_lfcount, ret_with_bycatch) %>%
   pivot_longer(cols = c(ret_with_lfcount, ret_with_bycatch), 
                names_to = "catch_type", 
                values_to = "retrieval_count"); plot_data_retrievals
 
 plot_data_totals <- summ_catches %>%
-  select(trap_type, total_lf_catch, total_bycatch) %>%
+  dplyr::select(trap_type, total_lf_catch, total_bycatch) %>%
   pivot_longer(cols = c(total_lf_catch, total_bycatch), 
                names_to = "catch_type", 
                values_to = "total_count")
 
-# Create the plot for retrieval counts
+## Create the plot for retrieval counts
 plot_retrievals <- ggplot(plot_data_retrievals, 
                           aes(x = trap_type, y = retrieval_count, fill = catch_type)) +
-  geom_bar(stat = "identity", position = position_dodge()) +
+  geom_bar(stat = "identity", position = position_dodge(), color = 'black') +
   labs(
     y = "Retrievals with catches (#)" # Remove x-axis title by excluding it here
   ) +
@@ -73,10 +69,10 @@ plot_retrievals <- ggplot(plot_data_retrievals,
     expand = c(0, 0)                              # Start 0 line at the x-axis
   )
 
-# Create the plot for total counts
+## Create the plot for total counts
 plot_catches <- ggplot(plot_data_totals, 
                        aes(x = trap_type, y = total_count, fill = catch_type)) +
-  geom_bar(stat = "identity", position = position_dodge()) +
+  geom_bar(stat = "identity", position = position_dodge(), color = 'black') +
   labs(
     y = "Catches (#)", # Remove x-axis title by excluding it here
     fill = "Catch type"
@@ -95,10 +91,26 @@ plot_catches <- ggplot(plot_data_totals,
   scale_y_continuous(
     breaks = scales::pretty_breaks(n = 5),       # Ensure y-axis breaks are whole numbers
     expand = c(0, 0)                              # Start 0 line at the x-axis
-  )
+  ); plot_catches
 
-# Combine the two plots side by side
-comb_bar_plots <- plot_retrievals + plot_catches; comb_bar_plots
+## Combine the two plots side by side
+## Combine the plots
+plot_retrieval_catches<- plot_grid(
+  plot_retrievals, plot_catches,
+  labels = c("A", "B"),     # Panel labels
+  label_size = 14,          # Size of panel labels
+  align = "v",              # Align vertically
+  label_x = 0.7,           # Horizontal position of labels (inset)
+  label_y = 0.95,           # Vertical position of labels (inset)
+  ncol = 2                  # Two panels side-by-side
+); print(plot_retrieval_catches)
+
+## Write out plot as a PNG image
+ggsave(
+  "./figures/plot_retrieval_catches.png", plot_retrieval_catches, 
+  width = 7, height = 3,  
+  units = "in", dpi = 4000               
+)
 
 
 ################################################################################
@@ -109,7 +121,6 @@ library(lme4)
 library(glmmTMB)
 library(MASS)
 source("./functions.R")
-
 
 ## Prepare data ----------------------------------------------------------------
 ##
@@ -155,7 +166,8 @@ bin_glm_nt <- glm(ret_with_nontarg ~ trap_type + pot_light + lf_num_surv + site_
                   family = binomial(link = "logit"), 
                   data = ret)
 summary(bin_glm_nt)
-coeftab_glm(bin_glm_lf)
+coeftab_glm(bin_glm_nt)
+write.csv(coeftab_glm(bin_glm_nt), "./tables/glm-traps-retrievals.csv")
 
 ## --> Fixed effects estimates are the same as the mixed-effects model
 ## Estimate: -2.88155, p = 0.0105 (significant).
@@ -186,8 +198,9 @@ coeftab_glm(bin_glm_lf)
 ## Mixed effects model with site_ID
 negbin_glmm_nt <- glmmTMB(
   ret_with_nontarg ~  trap_type + pot_light + lf_num_surv + site_rel + (1 | site_ID),
-  family = nbinom2, data = ret) # Negative binomial distribution (variance = mean * dispersion)
+  family = nbinom2, data = ret) ## Negative binomial distribution (variance = mean * dispersion)
 summary(negbin_glmm_nt)
+
 
 ## --> Warning message:In finalizeTMB(TMBStruc, obj, fit, h, data.tmb.old) :Model convergence problem; non-positive-definite Hessian matrix. See vignette('troubleshooting')
 ## Model did not converge properly. Typically means that the optimization process encountered numerical issues, 

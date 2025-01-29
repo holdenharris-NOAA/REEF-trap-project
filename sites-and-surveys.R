@@ -14,7 +14,6 @@ library(cowplot)
 library(sf)
 library(maps)
 
-
 ## -----------------------------------------------------------------------------
 ## Sites
 
@@ -204,14 +203,13 @@ hab_class <- ggplot(habitat_summary, aes(x = hab_class, y = mean_lf_count)) +
   scale_y_continuous(breaks = seq(0, 12, by = 3), expand = c(0, 0))
 hab_class
 
-
 ## Combine the plots
 plots_diver_surveys <- plot_grid(
   hist_rel, hist_lf, scatter_plot, hab_class,
   labels = c("A", "B", "C", "D"), # Panel labels
   label_size = 14,          # Size of panel labels
   align = "v",              # Align vertically
-  label_x = 0.85,            # Horizontal position of labels (inset)
+  label_x = 0.85,           # Horizontal position of labels (inset)
   label_y = 0.95,           # Vertical position of labels (inset)
   ncol = 2                  # Two panels side-by-side
 ); print(plots_diver_surveys)
@@ -222,7 +220,6 @@ ggsave(
   width = 6.5, height = 6.5,  
   units = "in", dpi = 2000               
 )
-
 
 ## -----------------------------------------------------------------------------
 ##

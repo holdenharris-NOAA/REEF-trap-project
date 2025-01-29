@@ -1,3 +1,12 @@
+########################################################################
+## ---------------------------------------------------------------------
+##
+## Data processing, analyses, and visualizations for 
+## REEF Lionfish Trap Project
+##
+## trap-videos.R
+
+source("./functions.R")
 library(dplyr)
 library(ggplot2)
 
@@ -5,7 +14,7 @@ vids <- read.csv("./data/raw/video-reads.csv", stringsAsFactors = FALSE); str(vi
 vids <- vids %>% filter(!is.na(lf_count))
 nrow(vids)
 
-## About
+## About the video data set
 ## 4,981 rows (video reads) and 31 columns, with information on trap deployments, video metadata, 
 ## and observations of lionfish and bycatch
 ## Lionfish presence: Columns lf_present and lf_count
@@ -43,7 +52,7 @@ vids <- vids %>% mutate(lf_present = ifelse(lf_count > 0, 1, 0))  # 1 if lionfis
 
 ################################################################################
 ## 
-## Summary statisticds
+## Summary statistics
 
 ## Look at number of sites
 n_distinct(vids$site_name)
@@ -146,8 +155,7 @@ ggsave(
 ##
 ## Analysis
 
-## Mixed effects model with site_ID
-
+## Mixed effects model with deployment as random effect
 bin_glmm_lfvid <- 
   glmer(lf_present ~ trap_type + as.factor(days_deployed)
                      + (1 | deployment), ## Random effect -> Incoporate same camera on deployment
