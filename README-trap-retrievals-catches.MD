@@ -25,32 +25,17 @@ library(glmmTMB)
 library(MASS)
 ```
 
-### Reproducibility
 - **Script Location**: `trap-retrievals-and-catches.R`
 - **Functions**: Any required custom functions are sourced from `./functions.R`.
 - **Data Preparation**: Ensure the correct data structure by running `str(retrievals)` before analysis.
 
----
-
-## Data Processing and Summaries
-### Load and Process Data
-```r
-retrievals <- read.csv("./data/raw/trap-deployment-retrievals.csv")
-```
 
 ### Summarize Catches by Trap Type
 ```r
-summ_catches <- retrievals %>%
-  filter(lf_catch_num > 0 | bycatch_num > 0) %>%
-  group_by(trap_type) %>%
-  summarise(
-    ret_with_catches = n(),
-    ret_with_lfcount = sum(lf_catch_num > 0, na.rm = TRUE),
-    total_lf_catch = sum(lf_catch_num, na.rm = TRUE),
-    ret_with_bycatch = sum(bycatch_num > 0, na.rm = TRUE),
-    total_bycatch = sum(bycatch_num, na.rm = TRUE)
-  )
-print(summ_catches)
+trap_type ret_with_catches ret_with_lfcount total_lf_catch ret_with_bycatch
+  <chr>                <int>            <int>          <int>            <int>
+1 GT                       1                0              0                1
+2 MLT                     11                1              1               10
 ```
 
 **Results:**
@@ -59,60 +44,7 @@ print(summ_catches)
 
 ---
 
-## Visualization of Retrievals and Catches
-### Reshape Data for Plotting
-```r
-plot_data_retrievals <- summ_catches %>%
-  pivot_longer(cols = c(ret_with_lfcount, ret_with_bycatch),
-               names_to = "catch_type",
-               values_to = "retrieval_count")
-
-plot_data_totals <- summ_catches %>%
-  pivot_longer(cols = c(total_lf_catch, total_bycatch),
-               names_to = "catch_type",
-               values_to = "total_count")
-```
-
-### Generate Bar Plots
-```r
-plot_retrievals <- ggplot(plot_data_retrievals,
-                          aes(x = trap_type, y = retrieval_count, fill = catch_type)) +
-  geom_bar(stat = "identity", position = position_dodge(), color = 'black') +
-  theme_minimal() +
-  scale_fill_manual(values = c("ret_with_lfcount" = "blue", "ret_with_bycatch" = "red"),
-                    labels = c("Bycatch", "Lionfish")) +
-  theme(
-    legend.position = "none",
-    axis.line.x = element_line(color = "black"),
-    axis.text.x = element_text(size = 12, color = "black"),
-    axis.text.y = element_text(size = 10),
-    axis.ticks.x = element_line(color = "black"),
-    axis.title.x = element_blank(),
-    axis.title.y = element_text(size = 12, color = "black")
-  )
-```
-
-```r
-# Save plot
- ggsave("./figures/plot_retrieval_catches.png", plot_retrieval_catches,
-        width = 7, height = 3, units = "in", dpi = 4000)
-```
-
----
-
 ## Statistical Analysis
-### Data Preparation
-```r
-ret <- retrievals %>%
-  mutate(
-    ret_with_lfcount = ifelse(lf_catch_num > 0, 1, 0),
-    ret_with_nontarg = ifelse(bycatch_num > 0, 1, 0)
-  )
-ret$site_ID   <- as.factor(ret$site_ID)
-ret$trap_type <- as.factor(ret$trap_type)
-ret$pot_light <- as.factor(ret$pot_light)
-```
-
 ### **Binomial Logistic Regression (Bycatch Occurrence)**
 #### Mixed Effects Model
 ```r
@@ -128,6 +60,28 @@ summary(bin_glmm_nt)
 bin_glm_nt <- glm(ret_with_nontarg ~ trap_type + pot_light + lf_num_surv + site_rel,
                   family = binomial(link = "logit"), data = ret)
 summary(bin_glm_nt)
+
+glm(formula = ret_with_nontarg ~ trap_type + pot_light + lf_num_surv + 
+    site_rel, family = binomial(link = "logit"), data = ret)
+
+Coefficients:
+             Estimate Std. Error z value Pr(>|z|)  
+(Intercept)  -2.88155    1.12624  -2.559   0.0105 *
+trap_typeMLT  2.49317    1.09137   2.284   0.0223 *
+pot_lightyes -0.29445    0.74612  -0.395   0.6931  
+lf_num_surv   0.03394    0.07649   0.444   0.6572  
+site_rel     -1.29045    0.77651  -1.662   0.0965 .
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+(Dispersion parameter for binomial family taken to be 1)
+
+    Null deviance: 61.825  on 85  degrees of freedom
+Residual deviance: 49.571  on 81  degrees of freedom
+  (4 observations deleted due to missingness)
+AIC: 59.571
+
+Number of Fisher Scoring iterations: 6
 ```
 
 **Key Findings:**
@@ -160,14 +114,3 @@ summary(negbin_glm_nt)
 - **MLT traps** had significantly higher odds of non-target catches than GT traps.
 - **Site relief** may influence bycatch occurrence, but further research is needed.
 - **Negative binomial modeling was required for count-based analysis**, and mixed-effects models were unnecessary due to singularity issues.
-
-This analysis provides key insights into lionfish trapping efficiency and non-target impacts. Future studies should explore the role of habitat structure and trap modifications on catch composition.
-
----
-
-## Contact
-For questions or collaboration inquiries, please contact:
-- **Research Lead**: [Your Name]
-- **Institution**: [Your Organization]
-- **Email**: [Your Email]
-
