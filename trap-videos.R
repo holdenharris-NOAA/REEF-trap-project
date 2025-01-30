@@ -49,6 +49,14 @@ vids <- vids %>% mutate(days_deployed = as.numeric(corrected_vid_date - date_dep
 ## Make binary column for lionfish present or not
 vids <- vids %>% mutate(lf_present = ifelse(lf_count > 0, 1, 0))  # 1 if lionfish observed, else 0
 
+## Include lionfish count--right join from diver surveys data sheet
+diver_surveys <- read.csv("./data/raw/diver_surveys.csv")
+colnames(diver_surveys)[colnames(diver_surveys) == "lf_count"] <- "survey_lf_count"
+diver_surveys_unique <- diver_surveys %>%
+  group_by(site_name) %>%
+  summarise(survey_lf_count = mean(survey_lf_count, na.rm = TRUE))  # Change mean() to another function if needed
+vids <- merge(vids, diver_surveys_unique[, c("site_name", "survey_lf_count")], by = "site_name", all.x = TRUE)
+str(vids)
 
 ################################################################################
 ## 
@@ -157,7 +165,7 @@ ggsave(
 
 ## Mixed effects model with deployment as random effect
 bin_glmm_lfvid <- 
-  glmer(lf_present ~ trap_type + as.factor(days_deployed)
+  glmer(lf_present ~ trap_type + as.factor(days_deployed) 
                      + (1 | deployment), ## Random effect -> Incoporate same camera on deployment
                      family = binomial(link = "logit"), data = vids)
 summary(bin_glmm_lfvid)
@@ -177,3 +185,25 @@ write.csv(coeftab_glm(bin_glmm_lfvid), "./tables/glmm-vid-lfpresence.csv", row.n
 ## Day 1 - No significant difference in lionfish presence compared to baseline (p = 0.9831).
 ## Day 2 - Statistically significant increase in the probability of lionfish presence compared to baseline (p = 0.0347). The logit of 1.09 translates to an increased odds ratio (OR ≈ 2.97).
 ## Day 3 - No significant difference compared to baseline (p = 0.7404).
+
+
+## Mixed effects model with lionfish abundance
+bin_glmm_lfvid2 <- 
+  glmer(lf_present ~ trap_type + as.factor(days_deployed) + survey_lf_count
+        + (1 | deployment), ## Random effect -> Incoporate same camera on deployment
+        family = binomial(link = "logit"), data = vids)
+summary(bin_glmm_lfvid2)
+coeftab_glm(bin_glmm_lfvid2)
+write.csv(coeftab_glm(bin_glmm_lfvid), "./tables/glmm-vid-lfpresence.csv", row.names = FALSE) ## Write out results table
+## -->dAIC is 50 lower, indicating a better model
+
+## Substantial variability in lionfish presence across different deployments (variance = 7.776).
+## this is lower than not including the lionfish abunance, indicating that expalins some fo this variance
+##
+## Intercept = logit of -9.664. 
+## Trap type: Positive but not significant. 
+## Days deployed: Again, Day 2 appears to have an effect, although it is now less pronounced with p = 0.062
+## Day 1 & Day 3: No significant effect.
+##
+## Site lionfish abundance. Positive association with lionfish detection in videos (p = 0.098).
+## Higher lionfish density at a site may increase the likelihood of detecting them in video surveys.
